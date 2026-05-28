@@ -924,14 +924,18 @@ class fudai_analyse:
         self.update_device_width()
         wait_times = 0  # 当前直播间的等待次数，累计4次没有福袋，则切换直播间
         swipe_times = 0  # 向上滑动的次数,当超出一定值，退出返回直播列表
+        no_fudai_room_times = 0  # 连续刷到无福袋直播间的次数，达到阈值后返回直播列表
+        max_no_fudai_room_times = 15
         while True:
             x = self.check_have_fudai()
             if self.check_no_fudai_time() > 1800:  # 如果30分钟都没有福袋
                 self.save_reward_pic()
                 self.back_to_zhibo_list()
                 self.into_zhibo_from_list()
+                no_fudai_room_times = 0
                 continue
-            if x and swipe_times < 2:
+            if x:
+                no_fudai_room_times = 0
                 # wait_times = 0
                 # self.cut_pic((x, 400), (x + 90, 455))  # 通常小福袋的位置
                 os.system("adb -s {} shell input tap {} {}".format(self.device_id,
@@ -939,13 +943,13 @@ class fudai_analyse:
                 print("点击打开福袋详情")
                 time.sleep(3)
             elif needswitch:  # 如果福袋不存在，且需要切换直播间
-                if swipe_times < 2 and self.get_current_hour() > 6:  # 上划次数不到10次，且已经是7点后了，就继续上划
+                if self.get_current_hour() > 6 and no_fudai_room_times < max_no_fudai_room_times:
                     os.system(
                         "adb -s %s shell input swipe %s %s %s %s 200" % (self.device_id, self.scale_x(760), self.scale_y(1600), self.scale_x(760), self.scale_y(800)))
-                    print("直播间无福袋，上划切换直播间")
-                    swipe_times += 1
+                    no_fudai_room_times += 1
+                    print("直播间无福袋，上划切换直播间，当前连续无福袋直播间数:{}".format(no_fudai_room_times))
                 else:  # 如果时间已经是凌晨，没有直播间福袋就整个退出
-                    print("直播间刷了15个都无福袋，退出返回直播列表")
+                    print("直播间连续刷了{}个都无福袋，退出返回直播列表".format(max_no_fudai_room_times))
                     print("{}执行返回直播列表操作".format(self.device_id))
                     # os.system("adb -s %s shell input keyevent 4" % self.device_id)
                     os.system("adb shell input keyevent 4")
@@ -957,12 +961,14 @@ class fudai_analyse:
                                   self.scale_x(45), 440*self.resolution_ratio_y//2400))  # 点击直播中
                         print("点击打开直播间列表")
                     self.into_zhibo_from_list()
+                    no_fudai_room_times = 0
                     swipe_times = 0  # 滑动次数归0
                 time.sleep(5)
                 continue
             elif self.check_zhibo_is_closed():  # 如果不切换直播间但直播间已经关闭了
                 self.back_to_zhibo_list()
                 self.into_zhibo_from_list()
+                no_fudai_room_times = 0
                 swipe_times = 0
                 time.sleep(5)
                 continue
@@ -1069,6 +1075,7 @@ class fudai_analyse:
                 continue
             elif self.check_in_zhibo_list():  # 如果已经退出到直播间列表
                 self.into_zhibo_from_list()
+                no_fudai_room_times = 0
                 swipe_times = 0  # 滑动次数归0
                 continue
             self.close_no_reward_popup()
