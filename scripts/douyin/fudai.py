@@ -376,11 +376,13 @@ class fudai_analyse:
         """对倒计时时间进行转化，变成秒存储"""
         try:
             if len(last_time) == 4:
-                # minutes, seconds = map(int, last_time.split(':'))
                 minutes = int(last_time[:2])
                 seconds = int(last_time[2:])
+            elif len(last_time) == 3:
+                minutes = int(last_time[:1])
+                seconds = int(last_time[1:])
             else:
-                print("时间格式异常")
+                print("时间格式异常:{}".format(last_time))
                 return False
             # 转换为总秒数
             total_seconds = minutes * 60 + seconds
@@ -571,6 +573,31 @@ class fudai_analyse:
             return True
         return False
 
+    def check_in_unfollowed_zhibo(self):
+        """检查当前是否误进入左上角带关注按钮的未关注直播间"""
+        self.cut_pic((self.scale_x(0), 70*self.resolution_ratio_y//2400), (self.scale_x(420), 220 *
+                     self.resolution_ratio_y//2400), '', 'zhibo_unfollowed_status')
+        zhibo_status = self.analyse_pic_word('zhibo_unfollowed_status', 1)
+        print("直播间左上角状态识别：{}".format(zhibo_status))
+        if "关注" in zhibo_status:
+            print("当前直播间左上角存在关注按钮，判定为未关注直播间")
+            return True
+        return False
+
+    def exit_current_zhibo(self):
+        """优先点击直播间右上角关闭按钮，失败时再尝试系统返回"""
+        os.system("adb -s {} shell input tap {} {}".format(
+            self.device_id, self.scale_x(1020), 148 * self.resolution_ratio_y // 2400))
+        print("点击直播间右上角关闭按钮")
+        time.sleep(2)
+        self.get_screenshot()
+        if self.check_in_zhibo_list() or self.check_in_follow_list():
+            return True
+        os.system("adb -s %s shell input keyevent 4" % self.device_id)
+        print("右上角关闭未生效，补一次返回")
+        time.sleep(2)
+        return False
+
     def back_to_zhibo_list(self):
         """功能初始化，回到直播间列表"""
         click_back_times = 0
@@ -587,6 +614,10 @@ class fudai_analyse:
                 print("点击打开直播间的列表")
                 time.sleep(2)
                 return False
+            elif self.check_in_unfollowed_zhibo():
+                self.exit_current_zhibo()
+                click_back_times += 1
+                continue
             os.system("adb -s %s shell input keyevent 4" % self.device_id)
             print("点击返回")
             time.sleep(2)
@@ -711,6 +742,21 @@ class fudai_analyse:
         time_text = self.analyse_pic_word('fudai_countdown', 2)
         print("倒计时时间：{}".format(time_text))
         return fudai_content_text, time_text
+
+    def get_fudai_contain_with_retry(self, renwu=2, retry_times=1):
+        """获取福袋内容和倒计时，倒计时异常时重新截图再识别一次"""
+        fudai_content_text, time_text = self.get_fudai_contain(renwu)
+        result = self.check_countdown(time_text)
+        retry_count = 0
+        while not result and retry_count < retry_times:
+            retry_count += 1
+            print("倒计时时间格式异常，重新截图后重试第{}次".format(retry_count))
+            time.sleep(1)
+            self.get_screenshot()
+            renwu = self.check_detail_height()
+            fudai_content_text, time_text = self.get_fudai_contain(renwu)
+            result = self.check_countdown(time_text)
+        return fudai_content_text, time_text, result, renwu
 
     def check_contain(self, contains=''):
         """检查福袋内容是否想要"""
@@ -850,6 +896,16 @@ class fudai_analyse:
         print("点击未中奖弹窗确认按钮")
         time.sleep(2)
 
+    def close_no_reward_popup_and_swipe(self):
+        """关闭未中奖弹窗后，滑动切到下一个直播间"""
+        self.close_no_reward_popup()
+        time.sleep(1)
+        os.system(
+            "adb -s %s shell input swipe %s %s %s %s 200" % (
+                self.device_id, self.scale_x(760), self.scale_y(1600), self.scale_x(760), self.scale_y(800)))
+        print("未中奖弹窗已关闭，上划切换到下一个直播间")
+        time.sleep(3)
+
     def get_reward(self, reward_y=0):
         """中奖后领奖然后返回"""
         self.save_reward_pic()
@@ -934,6 +990,13 @@ class fudai_analyse:
                 self.into_zhibo_from_list()
                 no_fudai_room_times = 0
                 continue
+            if self.check_in_unfollowed_zhibo():
+                print("误进入未关注直播间，返回直播间列表后重新进入")
+                self.back_to_zhibo_list()
+                self.into_zhibo_from_list()
+                no_fudai_room_times = 0
+                swipe_times = 0
+                continue
             if x:
                 no_fudai_room_times = 0
                 # wait_times = 0
@@ -995,7 +1058,8 @@ class fudai_analyse:
                 continue
             self.get_screenshot()
             renwu = self.check_detail_height()
-            fudai_content_text, time_text = self.get_fudai_contain(renwu)
+            fudai_content_text, time_text, result, renwu = self.get_fudai_contain_with_retry(
+                renwu)
             if self.check_contain(fudai_content_text) and needswitch:  # 如果福袋内容是不想要的
                 os.system("adb -s {} shell input tap {} {}".format(self.device_id,
                           x + self.scale_x(45), 440*self.resolution_ratio_y//2400))  # 点击刚才打开小福袋的位置
@@ -1007,7 +1071,6 @@ class fudai_analyse:
                 swipe_times += 1
                 time.sleep(5)
                 continue
-            result = self.check_countdown(time_text)
             if result:
                 lastsecond, future_timestamp = result
             else:  # 如果识别到的内容不太对
@@ -1054,12 +1117,7 @@ class fudai_analyse:
                          self.resolution_ratio_y//2400), '', "choujiang_result")  # 没有抽中福袋位置
             choujiang_result = self.analyse_pic_word('choujiang_result', 1)
             if "没有抽中" in choujiang_result:
-                # todo
-                self.close_no_reward_popup()
-                time.sleep(3)
-                # 没抽中滑动一次
-                os.system(
-                    "adb -s %s shell input swipe %s %s %s %s 200" % (self.device_id, self.scale_x(760), self.scale_y(1600), self.scale_x(760), self.scale_y(800)))
+                self.close_no_reward_popup_and_swipe()
                 continue
               # 没弹出没有抽中，可能是直播间关闭，可能是中奖了
             reward_y = self.check_have_reward()
@@ -1078,11 +1136,7 @@ class fudai_analyse:
                 no_fudai_room_times = 0
                 swipe_times = 0  # 滑动次数归0
                 continue
-            self.close_no_reward_popup()
-            time.sleep(3)
-            # 没抽中滑动一次
-            os.system("adb -s %s shell input swipe %s %s %s %s 200" %
-                      (self.device_id, self.scale_x(760), self.scale_y(1600), self.scale_x(760), self.scale_y(800)))
+            self.close_no_reward_popup_and_swipe()
             continue
 
 
