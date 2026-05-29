@@ -65,30 +65,31 @@ class slide_guaji:
         return 1080, default_y_resolution
 
     def slide_once(self, y_pianyi=0, default_y_resolution=2400):
-        """对连接的手机执行一次带细微随机偏移的向上滑动。"""
+        """对连接的手机执行一次更偏中右下安全区域的向上滑动。"""
         screen_width, screen_height = self.get_screen_size(default_y_resolution)
+        # 将滑动轨迹限制在中间偏右、偏下的区域，尽量避开边缘和顶部按钮。
         start_x = self.clamp(
-            screen_width // 2 + random.randint(-screen_width // 12, screen_width // 12),
-            int(screen_width * 0.2),
-            int(screen_width * 0.8),
+            int(screen_width * 0.62) + random.randint(-screen_width // 30, screen_width // 24),
+            int(screen_width * 0.4),
+            int(screen_width * 0.78),
         )
         end_x = self.clamp(
-            start_x + random.randint(-screen_width // 18, screen_width // 18),
-            int(screen_width * 0.15),
-            int(screen_width * 0.85),
+            start_x + random.randint(-screen_width // 36, screen_width // 28),
+            int(screen_width * 0.42),
+            int(screen_width * 0.8),
         )
         start_y = self.clamp(
-            int(screen_height * 0.75) + y_pianyi + random.randint(-screen_height // 40, screen_height // 40),
-            int(screen_height * 0.6),
-            screen_height - 1,
+            int(screen_height * 0.8) + y_pianyi + random.randint(-screen_height // 50, screen_height // 45),
+            int(screen_height * 0.72),
+            int(screen_height * 0.9),
         )
         end_y = self.clamp(
-            int(screen_height * 0.35) + y_pianyi + random.randint(-screen_height // 30, screen_height // 30),
-            0,
-            int(screen_height * 0.5),
+            int(screen_height * 0.48) + y_pianyi + random.randint(-screen_height // 45, screen_height // 36),
+            int(screen_height * 0.4),
+            int(screen_height * 0.58),
         )
         if end_y >= start_y:
-            end_y = max(0, start_y - random.randint(screen_height // 5, screen_height // 3))
+            end_y = max(int(screen_height * 0.38), start_y - random.randint(screen_height // 6, screen_height // 4))
         duration_ms = random.randint(220, 420)
 
         subprocess.run(
@@ -121,7 +122,7 @@ class slide_guaji:
         print("开始随机滑动，按 Ctrl+C 停止。")
         try:
             while True:
-                wait_seconds = random.randint(5, 10)
+                wait_seconds = random.randint(5, 8)
                 print("等待 %s 秒后执行滑动..." % wait_seconds)
                 time.sleep(wait_seconds)
                 self.slide_once(y_pianyi, y_resolution)
