@@ -2,6 +2,29 @@ import random
 import re
 import subprocess
 import time
+import json
+from pathlib import Path
+
+
+# region agent log
+DEBUG_LOG_PATH = Path(__file__).resolve().parents[2] / "debug-c65e53.log"
+
+
+def debug_log(run_id, hypothesis_id, location, message, data):
+    payload = {
+        "sessionId": "c65e53",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    with DEBUG_LOG_PATH.open("a", encoding="utf-8") as log_file:
+        log_file.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+# endregion
 
 
 class slide_guaji:
@@ -14,17 +37,32 @@ class slide_guaji:
 
     def select_device(self):
         """选择需要连接的设备"""
+        # region agent log
+        debug_log("initial", "H3", "scripts/slide/slide.py:31", "select_device_enter", {})
+        # endregion
         result = subprocess.run(
             ["adb", "devices"],
             capture_output=True,
             text=True,
             check=False,
         )
+        # region agent log
+        debug_log(
+            "initial",
+            "H4",
+            "scripts/slide/slide.py:40",
+            "adb_devices_result",
+            {"returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr},
+        )
+        # endregion
         totalstring = result.stdout or ""
         pattern = r"(\b(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}(?::[0-9]+)?|[A-Za-z0-9]{8,})\b)\s*device\b"
         devicelist = re.findall(pattern, totalstring)
         devicenum = len(devicelist)
         if devicenum == 0:
+            # region agent log
+            debug_log("initial", "H4", "scripts/slide/slide.py:52", "no_device_detected", {})
+            # endregion
             print("当前无设备连接电脑,请检查设备连接情况!")
             return None
         if devicenum == 1:
@@ -132,5 +170,8 @@ class slide_guaji:
 
 
 if __name__ == "__main__":
+    # region agent log
+    debug_log("initial", "H3", "scripts/slide/slide.py:158", "main_entry", {"argv_mode": "direct_script"})
+    # endregion
     slide = slide_guaji()
     slide.guaji(0, 2240)  # 参数第一个是y的偏移值，第二个是默认y分辨率
