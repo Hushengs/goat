@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "每周事项倒计时与完成统计",
+  "description": "按星期配置固定事项，在今天查看倒计时、完成状态和历史记录。",
+  "version": "1.0.0",
+  "action": {
+    "default_title": "每周事项倒计时",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["storage"]
+}
