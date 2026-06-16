@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "每日工作记录与周汇总",
+  "description": "维护项目、登记每日工作并生成周汇总文本。",
+  "version": "1.0.0",
+  "action": {
+    "default_title": "每日工作记录",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["storage"]
+}
