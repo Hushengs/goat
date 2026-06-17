@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "A 股智能选股",
+  "description": "维护资源池与持仓，查看今日买卖建议、概率评分和盈亏概览。",
+  "version": "1.0.0",
+  "action": {
+    "default_title": "A 股智能选股",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://push2.eastmoney.com/*",
+    "https://push2his.eastmoney.com/*"
+  ]
+}

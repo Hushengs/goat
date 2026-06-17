@@ -3,6 +3,7 @@ import re
 import subprocess
 import time
 import json
+import hashlib
 from pathlib import Path
 
 
@@ -34,6 +35,74 @@ class slide_guaji:
     @staticmethod
     def clamp(value, min_value, max_value):
         return max(min_value, min(value, max_value))
+
+    def build_swipe_path(self, screen_width, screen_height, y_pianyi=0):
+        """生成一条尽量避开广告热区的纵向滑动轨迹。"""
+        # 广告位通常更容易出现在中右区域，优先走中左到中间的竖向通道。
+        lane_ratios = (0.34, 0.42, 0.5)
+        lane_ratio = random.choice(lane_ratios)
+        base_x = int(screen_width * lane_ratio)
+        start_x = self.clamp(
+            base_x + random.randint(-screen_width // 40, screen_width // 40),
+            int(screen_width * 0.22),
+            int(screen_width * 0.58),
+        )
+        end_x = self.clamp(
+            start_x + random.randint(-screen_width // 60, screen_width // 60),
+            int(screen_width * 0.2),
+            int(screen_width * 0.6),
+        )
+        start_y = self.clamp(
+            int(screen_height * 0.84) + y_pianyi + random.randint(-screen_height // 55, screen_height // 40),
+            int(screen_height * 0.74),
+            int(screen_height * 0.92),
+        )
+        end_y = self.clamp(
+            int(screen_height * 0.28) + y_pianyi + random.randint(-screen_height // 55, screen_height // 42),
+            int(screen_height * 0.18),
+            int(screen_height * 0.42),
+        )
+        if end_y >= start_y:
+            end_y = max(int(screen_height * 0.2), start_y - random.randint(screen_height // 4, screen_height // 3))
+        duration_ms = random.randint(280, 460)
+        return start_x, start_y, end_x, end_y, duration_ms
+
+    def perform_swipe(self, start_x, start_y, end_x, end_y, duration_ms):
+        subprocess.run(
+            [
+                "adb",
+                "-s",
+                self.device_id,
+                "shell",
+                "input",
+                "swipe",
+                str(start_x),
+                str(start_y),
+                str(end_x),
+                str(end_y),
+                str(duration_ms),
+            ],
+            check=False,
+        )
+
+    def get_screen_fingerprint(self):
+        """获取当前页面截图指纹，用于判断滑动后页面是否真的发生变化。"""
+        result = subprocess.run(
+            ["adb", "-s", self.device_id, "exec-out", "screencap", "-p"],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return None
+        screenshot_bytes = result.stdout.replace(b"\r\n", b"\n")
+        return hashlib.md5(screenshot_bytes).hexdigest()
+
+    def perform_back(self):
+        """广告页吞手势时，退回上一层页面。"""
+        subprocess.run(
+            ["adb", "-s", self.device_id, "shell", "input", "keyevent", "4"],
+            check=False,
+        )
 
     def select_device(self):
         """选择需要连接的设备"""
@@ -103,53 +172,58 @@ class slide_guaji:
         return 1080, default_y_resolution
 
     def slide_once(self, y_pianyi=0, default_y_resolution=2400):
-        """对连接的手机执行一次更偏中右下安全区域的向上滑动。"""
+        """对连接的手机执行一次尽量避开广告热区的向上滑动。"""
         screen_width, screen_height = self.get_screen_size(default_y_resolution)
-        # 将滑动轨迹限制在中间偏右、偏下的区域，尽量避开边缘和顶部按钮。
-        start_x = self.clamp(
-            int(screen_width * 0.62) + random.randint(-screen_width // 30, screen_width // 24),
-            int(screen_width * 0.4),
-            int(screen_width * 0.78),
+        before_fingerprint = self.get_screen_fingerprint()
+        start_x, start_y, end_x, end_y, duration_ms = self.build_swipe_path(
+            screen_width, screen_height, y_pianyi
         )
-        end_x = self.clamp(
-            start_x + random.randint(-screen_width // 36, screen_width // 28),
-            int(screen_width * 0.42),
-            int(screen_width * 0.8),
-        )
-        start_y = self.clamp(
-            int(screen_height * 0.8) + y_pianyi + random.randint(-screen_height // 50, screen_height // 45),
-            int(screen_height * 0.72),
-            int(screen_height * 0.9),
-        )
-        end_y = self.clamp(
-            int(screen_height * 0.48) + y_pianyi + random.randint(-screen_height // 45, screen_height // 36),
-            int(screen_height * 0.4),
-            int(screen_height * 0.58),
-        )
-        if end_y >= start_y:
-            end_y = max(int(screen_height * 0.38), start_y - random.randint(screen_height // 6, screen_height // 4))
-        duration_ms = random.randint(220, 420)
-
-        subprocess.run(
-            [
-                "adb",
-                "-s",
-                self.device_id,
-                "shell",
-                "input",
-                "swipe",
-                str(start_x),
-                str(start_y),
-                str(end_x),
-                str(end_y),
-                str(duration_ms),
-            ],
-            check=False,
-        )
+        self.perform_swipe(start_x, start_y, end_x, end_y, duration_ms)
         print(
             "已滑动设备 %s: (%s, %s) -> (%s, %s), 耗时 %sms"
             % (self.device_id, start_x, start_y, end_x, end_y, duration_ms)
         )
+        time.sleep(0.8)
+        after_fingerprint = self.get_screen_fingerprint()
+        if before_fingerprint and after_fingerprint and before_fingerprint == after_fingerprint:
+            print("检测到页面未变化，疑似广告页拦截滑动，补一次返回。")
+            self.perform_back()
+            time.sleep(1.2)
+            return
+        # 广告页面可能吞掉第一下手势，补一次更靠左的长距离滑动提高翻页成功率。
+        if random.random() < 0.35:
+            time.sleep(random.uniform(0.15, 0.35))
+            backup_start_x, backup_start_y, backup_end_x, backup_end_y, backup_duration_ms = self.build_swipe_path(
+                screen_width, screen_height, y_pianyi
+            )
+            backup_start_x = self.clamp(
+                min(start_x, backup_start_x) - screen_width // 14,
+                int(screen_width * 0.16),
+                int(screen_width * 0.46),
+            )
+            backup_end_x = self.clamp(
+                backup_start_x + random.randint(-screen_width // 80, screen_width // 80),
+                int(screen_width * 0.14),
+                int(screen_width * 0.48),
+            )
+            self.perform_swipe(
+                backup_start_x,
+                backup_start_y,
+                backup_end_x,
+                backup_end_y,
+                max(backup_duration_ms, 360),
+            )
+            print(
+                "广告页兜底滑动 %s: (%s, %s) -> (%s, %s), 耗时 %sms"
+                % (
+                    self.device_id,
+                    backup_start_x,
+                    backup_start_y,
+                    backup_end_x,
+                    backup_end_y,
+                    max(backup_duration_ms, 360),
+                )
+            )
 
     def guaji(self, y_pianyi=0, y_resolution=2400):
         """每隔5-10秒随机等待后，向上滑动一次手机屏幕。"""
